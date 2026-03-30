@@ -1,11 +1,8 @@
 """
-BPE Tokenizer — trained on true (uncorrupted) strings only.
-
-Workflow:
-  1. BPETokenizer.train(texts, vocab_size)  — learn merges from a corpus
-  2. tokenizer.encode(text)                 — text → list[int]
-  3. tokenizer.decode(ids)                  — list[int] → text
-  4. tokenizer.save(path) / .load(path)     — persist to JSON
+1. BPETokenizer.train(texts, vocab_size)  — learn merges from a corpus
+2. tokenizer.encode(text)                 — text → list[int]
+3. tokenizer.decode(ids)                  — list[int] → text
+4. tokenizer.save(path) / .load(path)     — persist to JSON
 """
 
 import re
@@ -13,12 +10,6 @@ import json
 from collections import Counter, defaultdict
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-# GPT-2-style pre-tokenization: split on whitespace/punctuation boundaries
-# while keeping the delimiter attached to the preceding token.
 _PRETOK_RE = re.compile(r"""'s|'t|'re|'ve|'m|'ll|'d| ?\w+| ?[^\s\w]+|\s+""")
 
 def _pretokenize(text: str) -> list[str]:
@@ -26,43 +17,28 @@ def _pretokenize(text: str) -> list[str]:
 
 
 def _word_to_chars(word: str) -> tuple[str, ...]:
-    """Represent a word as a tuple of UTF-8 bytes (expressed as latin-1 chars).
+    """reepresent a word as a tuple of UTF-8 bytes (expressed as latin-1 chars).
     This guarantees every token is in the 256-entry seed vocab."""
     return tuple(bytes([b]).decode("latin-1") for b in word.encode("utf-8"))
 
-
-# ---------------------------------------------------------------------------
-# Core BPE implementation
-# ---------------------------------------------------------------------------
-
 class BPETokenizer:
     def __init__(self):
-        # merges[pair] = rank  (order in which the merge was learned)
         self.merges: dict[tuple[str, str], int] = {}
-        # vocab: token_str → id
         self.vocab: dict[str, int] = {}
-        # reverse vocab: id → token_str
         self._id2tok: list[str] = []
-
-    # ------------------------------------------------------------------
-    # Training
-    # ------------------------------------------------------------------
 
     def train(self, texts: list[str], vocab_size: int = 1000, verbose: bool = False):
         """Learn BPE merges from *texts* until |vocab| == vocab_size."""
         assert vocab_size >= 256, "vocab_size must be ≥ 256"
 
-        # ---- seed vocabulary with all bytes (256 entries) ----
         self._id2tok = [bytes([i]).decode("latin-1") for i in range(256)]
         self.vocab = {tok: i for i, tok in enumerate(self._id2tok)}
 
-        # ---- count word frequencies in the corpus ----
         word_freq: Counter[tuple[str, ...]] = Counter()
         for text in texts:
             for word in _pretokenize(text):
                 word_freq[_word_to_chars(word)] += 1
 
-        # ---- pre-compute pair counts ----
         pair_counts = self._init_pair_counts(word_freq)
 
         num_merges = vocab_size - len(self.vocab)
@@ -72,9 +48,7 @@ class BPETokenizer:
 
             best_pair = max(pair_counts, key=lambda p: (pair_counts[p], p))
             if pair_counts[best_pair] < 2:
-                break  # no pair appears more than once — stop early
-
-            # record the merge
+                break 
             new_tok = best_pair[0] + best_pair[1]
             self.merges[best_pair] = step
             new_id = len(self._id2tok)
@@ -84,15 +58,10 @@ class BPETokenizer:
             if verbose and step % 100 == 0:
                 print(f"  merge {step:4d}: {best_pair!r} → {new_tok!r}  (freq={pair_counts[best_pair]})")
 
-            # apply merge to word_freq and update pair_counts incrementally
             word_freq, pair_counts = self._apply_merge(best_pair, new_tok, word_freq, pair_counts)
 
         if verbose:
             print(f"Training complete. vocab_size={len(self.vocab)}, merges={len(self.merges)}")
-
-    # ------------------------------------------------------------------
-    # Encoding / Decoding
-    # ------------------------------------------------------------------
 
     def encode(self, text: str) -> list[int]:
         ids: list[int] = []
@@ -104,7 +73,6 @@ class BPETokenizer:
         """Apply learned merges to a single pre-token."""
         tokens = list(_word_to_chars(word))
         while len(tokens) > 1:
-            # find the highest-priority (lowest rank) applicable merge
             best_idx, best_rank = -1, len(self.merges) + 1
             for i in range(len(tokens) - 1):
                 pair = (tokens[i], tokens[i + 1])
@@ -120,10 +88,6 @@ class BPETokenizer:
     def decode(self, ids: list[int]) -> str:
         raw = "".join(self._id2tok[i] for i in ids)
         return raw.encode("latin-1").decode("utf-8", errors="replace")
-
-    # ------------------------------------------------------------------
-    # Save / Load
-    # ------------------------------------------------------------------
 
     def save(self, path: str):
         data = {
@@ -142,10 +106,6 @@ class BPETokenizer:
         tok.vocab = {t: i for i, t in enumerate(tok._id2tok)}
         tok.merges = {(a, b): rank for rank, (a, b) in enumerate(data["merges"])}
         return tok
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _init_pair_counts(
@@ -173,12 +133,10 @@ class BPETokenizer:
                 new_word_freq[word] += freq
                 continue
 
-            # rebuild word with (a, b) merged wherever it occurs
             new_word: list[str] = []
             i = 0
             while i < len(word):
                 if i < len(word) - 1 and word[i] == a and word[i + 1] == b:
-                    # update pair counts for neighbors
                     if new_word:
                         pair_counts[(new_word[-1], a)] -= freq
                         pair_counts[(new_word[-1], new_tok)] += freq
@@ -194,13 +152,8 @@ class BPETokenizer:
             new_word_t = tuple(new_word)
             new_word_freq[new_word_t] += freq
 
-        pair_counts[pair] = 0  # mark as consumed
+        pair_counts[pair] = 0
         return new_word_freq, pair_counts
-
-
-# ---------------------------------------------------------------------------
-# Main — train on true strings and save
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     true_strings: list[str] = []
@@ -218,7 +171,6 @@ if __name__ == "__main__":
     tokenizer.save("bpe_tokenizer.json")
     print("Saved to bpe_tokenizer.json")
 
-    # Quick sanity check
     sample = true_strings[0]
     ids = tokenizer.encode(sample)
     decoded = tokenizer.decode(ids)
