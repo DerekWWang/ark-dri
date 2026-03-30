@@ -182,3 +182,7 @@ cython_debug/
 
 checkpoints-lg/
 checkpoints-sm/
+# local data files
+part1/train.txt
+test.rand.txt
+part1_preview.txt
