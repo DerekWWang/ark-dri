@@ -186,3 +186,5 @@ checkpoints-sm/
 part1/train.txt
 test.rand.txt
 part1_preview.txt
+
+challenge-data/*
