@@ -20,7 +20,7 @@ class CausalLMDataset(Dataset):
         ]
 
         if not self.samples:
-            raise ValueError("No samples remain after max_seq_len filtering")
+            raise ValueError("no samples remain after max_seq_len filtering")
 
         # bucket_size-wide length buckets
         max_len = max(len(ids) for ids in self.samples)
@@ -41,10 +41,6 @@ class CausalLMDataset(Dataset):
 
 
 class BucketBatchSampler(Sampler):
-    """
-    Samples indices from length buckets and shuffles before batch selection.
-    """
-
     def __init__(
         self,
         dataset: CausalLMDataset,
@@ -90,7 +86,6 @@ class BucketBatchSampler(Sampler):
         return total
 
 def collate_fn(batch, pad_id: int):
-    """Pad to the longest sequence in the batch and build a boolean mask."""
     padded = pad_sequence(batch, batch_first=True, padding_value=pad_id)   # (B, T)
     mask = (padded != pad_id).long()                                        # (B, T)
     return padded, mask
